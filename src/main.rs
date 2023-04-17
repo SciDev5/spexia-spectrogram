@@ -38,9 +38,12 @@ fn main() -> GenericResult<()> {
         gl::BlendEquation(gl::FUNC_ADD);
     }
 
-    let mut h = render::H::new();
+    let mut h = render::H::new(window.get_size().1);
 
     window.set_key_polling(true);
+    window.set_size_polling(true);
+    
+    let mut fullscreen = false;
 
     // Render loop
     while !window.should_close() {
@@ -57,11 +60,28 @@ fn main() -> GenericResult<()> {
         while let Ok((_,ev)) = events.try_recv() {
             match ev {
                 glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => {
-                    if let glfw::Key::D = key {
-                        if let glfw::Action::Press = action {
-                            window.set_decorated(!window.is_decorated());
+                    if let glfw::Action::Press = action {
+                        match key {
+                            glfw::Key::D => {
+                                window.set_decorated(!window.is_decorated());
+                            }
+                            glfw::Key::F => {
+                                fullscreen = !fullscreen;
+                                if fullscreen {
+                                    window.set_decorated(false);
+                                    window.maximize();
+                                } else {
+                                    window.set_decorated(true);
+                                    window.restore();
+                                }
+                            }
+                            _ => {}
                         }
                     }
+                }
+                glfw::WindowEvent::Size(width, height) => {
+                    unsafe { gl::Viewport(0, 0, width, height); }
+                    h.window_height = height;
                 }
                 _ => {},
             }

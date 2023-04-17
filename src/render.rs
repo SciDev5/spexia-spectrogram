@@ -148,10 +148,12 @@ pub struct H {
 
     spec_accum: [[f64;2]; HALF_FFT_SIZE],
     wave_last: [[f32; FFT_SIZE]; 2],
+
+    pub window_height: i32,
 }
 
 impl H {
-    pub fn new() -> Self {
+    pub fn new(window_height: i32) -> Self {
         let spectrogram_shaders = glrs::GLShaderProgramBuilder::new();
         let spectrogram_shaders = {
             let vert = glrs::GLShader::load(
@@ -204,6 +206,8 @@ impl H {
             wave_x_off: 0,
             spec_accum: [[0.0;2];HALF_FFT_SIZE],
             wave_last: [[0.0; FFT_SIZE]; 2],
+
+            window_height,
         }
     }
 
@@ -214,6 +218,7 @@ impl H {
         self.spectrogram_vo.bind();
         self.spectrogram_tex.bind(glrs::GLTextureSlot::Tex0, 1);
         gl::Uniform1f(2, self.n as f32 / SPEC_WIDTH as f32);
+        gl::Uniform1f(3, self.window_height as f32);
         gl::DrawArrays(gl::TRIANGLES, 0, 3 * SPECTROGRAM_VERTS.len() as i32);
 
         self.waveline_shaders.use_for_draw();

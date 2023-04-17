@@ -4,28 +4,46 @@ out vec4 FragColor;
 layout(location = 0) in vec2 uv;
 layout(location = 1) uniform sampler2D tex;
 layout(location = 2) uniform float nFrac;
+layout(location = 3) uniform float height;
 
 
-vec3 heatmap(float x) {
-    vec3 col = 0.8/(vec3(1.0,1.0,1.0)+exp(vec3(3.0,4.0,8.0)*(0.5 - x)-vec3(1.0,0.2,-0.5)));
-    col += 0.2/(vec3(1.0,1.0,1.0)+exp(vec3(1.5,4.0,3.0)*(0.5 - x)-vec3(2.0,1.2,5.5)));
+// vec3 heatmap(float x) {
+//     vec3 col = 0.8/(vec3(1.0,1.0,1.0)+exp(vec3(3.0,4.0,8.0)*(0.5 - x)-vec3(1.0,0.2,-0.5)));
+//     col += 0.2/(vec3(1.0,1.0,1.0)+exp(vec3(1.5,4.0,3.0)*(0.5 - x)-vec3(2.0,1.2,5.5)));
 
-    col -= vec3(0.2,0.2,0.1)*(1.0 - 1.0/(1.0+exp((2.0*x-2.0)*(-2.0*x+1.0))));
-    return col;
+//     col -= vec3(0.2,0.2,0.1)*(1.0 - 1.0/(1.0+exp((2.0*x-2.0)*(-2.0*x+1.0))));
+//     return col;
+// }
+
+vec3 hsv2rgb(vec3 c)
+{
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
+vec3 heatmap(float x) {
+    float k = clamp(x, 0.0, 1.0);// max(0.0,min(1.0,fac));
+    float h = mod((0.6-0.75*pow(k,4.0)+1.0),1.0);
+    float s = 1.0-pow(k,7.0);
+    float v = pow(k,0.7);
+    return hsv2rgb(vec3(h,s,v));
+}
+
 
 
 void main() {
     float uvx = uv.x;
     bool side = false;
+    bool blank = false;
     if (uv.x > 0.925) {
         uvx = nFrac;
         side = uv.x > 0.9625;
-    } else if (uv.x > 0.9) {
-        discard;
     } else {
+        if (uv.x > 0.90) {
+            blank = true;
+        }
         uvx = uvx + 0.1 + nFrac;
-        side = mod((uv.y * 500.0), 1.0) > 0.5;
+        side = mod((uv.y * height * 0.5), 1.0) > 0.5;
     }
     float k = pow(2.0, 10.0 * (uv.y - 1.0));
     vec4 v = texture(tex, vec2(uvx, k));
@@ -34,18 +52,21 @@ void main() {
     float x = 0.0;
     if (side) {
         x = v.x + v.y / 256.0;
-        band = vec3(1.0,0.0,0.0);
+        band = vec3(0.0392156862745098, 0.4392156862745098, 0.4196078431372549);
     } else {
         x = v.z + v.w / 256.0;
-        band = vec3(0.0,0.0,1.0);
+        band = vec3(0.27058823529411763, 0.0392156862745098, 0.4392156862745098 );
     }
 
     x = (x - 0.5) * 100.0;
-    x *= 0.75;
-    x -= 0.7;
+    x *= 0.35;
+    x += -0.05;
     x = x + 2.0 / (1.0 + exp(-exp(3.0*x-2.0))) - 1.3;
 
-    vec3 col = heatmap(x);
+    vec3 col = vec3(0.0,0.0,0.0);
+    if (!blank) {
+        col = heatmap(x);
+    }
     
     // col.b = cos(x*200.0);
     
