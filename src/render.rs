@@ -144,8 +144,10 @@ pub struct H {
     waveline_shaders: glrs::GLShaderProgramLinked,
 
     n: usize,
+    wave_x_off: i32,
 
     spec_accum: [[f64;2]; HALF_FFT_SIZE],
+    wave_last: [[f32; FFT_SIZE]; 2],
 }
 
 impl H {
@@ -199,7 +201,9 @@ impl H {
             waveline_vo,
             waveline_shaders,
             n: 0,
+            wave_x_off: 0,
             spec_accum: [[0.0;2];HALF_FFT_SIZE],
+            wave_last: [[0.0; FFT_SIZE]; 2],
         }
     }
 
@@ -215,6 +219,7 @@ impl H {
         self.waveline_shaders.use_for_draw();
         self.waveline_vo.update();
         self.waveline_vo.bind();
+        gl::Uniform1f(1, self.wave_x_off as f32 / FFT_SIZE as f32);
         gl::LineWidth(1.0);
         gl::PointSize(1.0);
         for j in 0..2 {
@@ -239,6 +244,28 @@ impl H {
             }
             self.waveline_vo.data[i + 4 * FFT_SIZE] = [wave.1[0][i], wave.1[1][i]];
         }
+        {
+            let last_off = self.wave_x_off;
+
+            let mut min_mse = f32::INFINITY;
+            let mut best_off = 0;
+            for off in (-512 .. 512).step_by(2) {
+                let total_off = off - last_off;
+                let bounds = (600.max(-total_off), 900.min(FFT_SIZE as i32 - total_off));
+                let mut mse = 0.0;
+                for i in (bounds.0 .. bounds.1).step_by(1) {
+                    mse += (wave.1[0][(i + total_off) as usize] - self.wave_last[0][i as usize]).powf(2.0);
+                }
+                mse /= (bounds.1 - bounds.0) as f32;
+
+                if mse < min_mse {
+                    min_mse = mse;
+                    best_off = off;
+                }
+            }
+            self.wave_x_off = best_off;
+        }
+        self.wave_last = wave.1;
         
         self.n += 1;
         if self.n == SPEC_WIDTH {
