@@ -29,7 +29,27 @@ vec3 heatmap(float x) {
     return hsv2rgb(vec3(h,s,v));
 }
 
+float samplePower(float uvx, float k, bool side) {
+    float p = 0.0;
+    float m = 0.0;
 
+    const int N = 50;
+
+    for (int i = 0; i < N; i++) {
+        vec4 v = texture(tex, vec2(uvx, k * (1.0 + 10.0 * float(i) / float(N) / height)));
+        // vec4 v = texture(tex, vec2(uvx, k));
+        if (side) {
+            p += v.x + v.y / 256.0;
+            m = max(m, v.x + v.y / 256.0);
+        } else {
+            p += v.z + v.w / 256.0;
+            m = max(m, v.z + v.w / 256.0);
+        }
+    }
+
+    return p / float(N) * 0.5 + m * 0.5;
+    // return p;
+}
 
 void main() {
     float uvx = uv.x;
@@ -46,15 +66,16 @@ void main() {
         side = mod((uv.y * height * 0.5), 1.0) > 0.5;
     }
     float k = pow(2.0, 10.0 * (uv.y - 1.0));
-    vec4 v = texture(tex, vec2(uvx, k));
+    // vec4 v = texture(tex, vec2(uvx, k));
 
     vec3 band = vec3(0.0,0.0,0.0);
-    float x = 0.0;
+    // float x = 0.0;
+    float x = samplePower(uvx, k, side);
     if (side) {
-        x = v.x + v.y / 256.0;
+        // x = v.x + v.y / 256.0;
         band = vec3(0.0392156862745098, 0.4392156862745098, 0.4196078431372549);
     } else {
-        x = v.z + v.w / 256.0;
+        // x = v.z + v.w / 256.0;
         band = vec3(0.27058823529411763, 0.0392156862745098, 0.4392156862745098 );
     }
 
