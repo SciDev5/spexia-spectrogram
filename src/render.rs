@@ -134,6 +134,7 @@ const SPECTROGRAM_VERTS: [[[f32; 2]; 3]; 2] = [
     [[1.0, 1.0], [-1.0, 1.0], [1.0, -1.0]],
     [[-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0]],
 ];
+const FLOATING_INDICATOR_VERTS: [[[f32; 2]; 3]; 1] = [[[1.0, -1.0], [0.9, -1.0], [1.0, -0.9]]];
 const WAVE_VO_SIZE: usize = 5 * FFT_SIZE;
 const SPEC_WIDTH: usize = 512;
 pub struct H {
@@ -142,14 +143,18 @@ pub struct H {
     spectrogram_tex: glrs::GLTexture2d<512, HALF_FFT_SIZE>,
     waveline_vo: F32VO<WAVE_VO_SIZE, 2>,
     waveline_shaders: glrs::GLShaderProgramLinked,
+    floating_indicator_vo: TriPosVO<1>,
+    floating_indicator_shaders: glrs::GLShaderProgramLinked,
 
     n: usize,
     wave_x_off: i32,
 
-    spec_accum: [[f64;2]; HALF_FFT_SIZE],
+    spec_accum: [[f64; 2]; HALF_FFT_SIZE],
     wave_last: [[f32; FFT_SIZE]; 2],
+    pub aspect: f32,
 
     pub window_height: i32,
+    pub window_is_floating: bool,
 }
 
 impl H {
@@ -194,6 +199,26 @@ impl H {
         };
         let waveline_vo = F32VO::new([[0.0; 2]; WAVE_VO_SIZE]);
 
+        let floating_indicator_shaders = glrs::GLShaderProgramBuilder::new();
+        let floating_indicator_shaders = {
+            let vert = glrs::GLShader::load(
+                glrs::GLShaderType::Vertex,
+                include_str!("shader/floating_indicator.vsh"),
+            )
+            .unwrap();
+            let frag = glrs::GLShader::load(
+                glrs::GLShaderType::Fragment,
+                include_str!("shader/floating_indicator.fsh"),
+            )
+            .unwrap();
+
+            floating_indicator_shaders.attatch_shader(&vert);
+            floating_indicator_shaders.attatch_shader(&frag);
+
+            floating_indicator_shaders.link().unwrap()
+        };
+        let floating_indicator_vo = TriPosVO::new(FLOATING_INDICATOR_VERTS);
+
         let spectrogram_tex = glrs::GLTexture2d::new();
 
         Self {
@@ -202,12 +227,17 @@ impl H {
             spectrogram_tex,
             waveline_vo,
             waveline_shaders,
+            floating_indicator_vo,
+            floating_indicator_shaders,
             n: 0,
             wave_x_off: 0,
-            spec_accum: [[0.0;2];HALF_FFT_SIZE],
+            spec_accum: [[0.0; 2]; HALF_FFT_SIZE],
             wave_last: [[0.0; FFT_SIZE]; 2],
 
             window_height,
+            window_is_floating: false,
+
+            aspect: 1.0,
         }
     }
 
@@ -229,6 +259,15 @@ impl H {
         gl::PointSize(1.0);
         for j in 0..2 {
             gl::DrawArrays(gl::LINE_STRIP, j * FFT_SIZE as i32, FFT_SIZE as i32);
+        }
+
+        if self.window_is_floating {
+            self.floating_indicator_shaders.use_for_draw();
+            self.floating_indicator_vo.bind();
+            gl::Uniform1f(1, self.aspect);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ZERO);
+            gl::DrawArrays(gl::TRIANGLES, 0, 3 * FLOATING_INDICATOR_VERTS.len() as i32);
+            gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
         }
         // gl::PointSize(1.0);
         // gl::LineWidth(4.0);
@@ -254,12 +293,13 @@ impl H {
 
             let mut min_mse = f32::INFINITY;
             let mut best_off = 0;
-            for off in (-512 .. 512).step_by(2) {
+            for off in (-512..512).step_by(2) {
                 let total_off = off - last_off;
                 let bounds = (600.max(-total_off), 900.min(FFT_SIZE as i32 - total_off));
                 let mut mse = 0.0;
-                for i in (bounds.0 .. bounds.1).step_by(1) {
-                    mse += (wave.1[0][(i + total_off) as usize] - self.wave_last[0][i as usize]).powf(2.0);
+                for i in (bounds.0..bounds.1).step_by(1) {
+                    mse += (wave.1[0][(i + total_off) as usize] - self.wave_last[0][i as usize])
+                        .powf(2.0);
                 }
                 mse /= (bounds.1 - bounds.0) as f32;
 
@@ -271,14 +311,14 @@ impl H {
             self.wave_x_off = best_off;
         }
         self.wave_last = wave.1;
-        
+
         self.n += 1;
         if self.n == SPEC_WIDTH {
             self.n = 0;
         }
         let mut ds = [glrs::GLTexPixel::default(); FFT_SIZE / 2];
         for i in 0..FFT_SIZE / 2 {
-            for j in 0 .. 2 {
+            for j in 0..2 {
                 let cur = wave.0[j][i].abs() as f64;
                 self.spec_accum[i][j] = cur + 0.5 * (self.spec_accum[i][j] - cur);
             }
@@ -291,7 +331,7 @@ impl H {
                 a: ((c1 * 65536.0) % 256.0) as u8,
             };
         }
-        if self.n == SPEC_WIDTH - 1  {
+        if self.n == SPEC_WIDTH - 1 {
             let mut d = [[glrs::GLTexPixel::default(); 1]; FFT_SIZE / 2];
             for i in 0..FFT_SIZE / 2 {
                 d[i] = [ds[i]; 1];

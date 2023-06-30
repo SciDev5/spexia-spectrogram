@@ -17,7 +17,9 @@ fn main() -> GenericResult<()> {
         glfw::OpenGlProfileHint::Core,
     ));
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
-    // glfw.window_hint(glfw::WindowHint::TransparentFramebuffer(true));
+
+    glfw.window_hint(glfw::WindowHint::Floating(false));
+    glfw.window_hint(glfw::WindowHint::TransparentFramebuffer(true));
 
     let (mut window, events) = glfw
         .create_window(1024, 1024, "spexia viewer :3", glfw::WindowMode::Windowed)
@@ -75,6 +77,10 @@ fn main() -> GenericResult<()> {
                                     window.restore();
                                 }
                             }
+                            glfw::Key::T => {
+                                window.set_floating(!window.is_floating());
+                                h.window_is_floating = window.is_floating();
+                            }
                             _ => {}
                         }
                     }
@@ -82,6 +88,7 @@ fn main() -> GenericResult<()> {
                 glfw::WindowEvent::Size(width, height) => {
                     unsafe { gl::Viewport(0, 0, width, height); }
                     h.window_height = height;
+                    h.aspect = height as f32 / width as f32;
                 }
                 _ => {},
             }
