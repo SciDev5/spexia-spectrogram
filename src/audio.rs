@@ -1,11 +1,11 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, time::SystemTime,
 };
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    Stream, StreamError,
+    Device, Host, Stream, StreamError, SupportedStreamConfig,
 };
 use rustfft::{num_complex::Complex32, num_traits::Zero, FftPlanner};
 
@@ -58,44 +58,137 @@ impl StreamData {
         self.fft_data.pop_front()
     }
 }
+
+struct StreamerInternalState {
+    lost_device: bool,
+}
+type StreamerInternalStateRef = Arc<Mutex<StreamerInternalState>>;
+
 pub struct Streamer {
     #[allow(unused)]
     stream: Stream,
+    internals: StreamerInternalStateRef,
     pub data: Arc<Mutex<StreamData>>,
 }
 impl Streamer {
-    fn err_fn(err: StreamError) {
+    fn err_fn(err: StreamError, internals: StreamerInternalStateRef) {
         eprintln!("an error occurred on the output audio stream: {}", err);
+        if let StreamError::DeviceNotAvailable = err {
+            internals.lock().unwrap().lost_device = true;
+        }
     }
-    pub fn begin() -> Result<Self, Box<dyn std::error::Error>> {
-        let host = cpal::default_host();
-        let device = host.default_output_device().unwrap();
-        let config = device.default_output_config().unwrap();
-        // let device = host.default_input_device().unwrap();
-        // let config = device.default_input_config().unwrap();
-        // let sample_rate = config.sample_rate().0;
-        let channels = config.channels();
+    pub fn update_stream(&mut self, device_selector: &DeviceSelector) {
+        self.stream = Self::get_stream(self.data.clone(), device_selector, self.internals.clone());
+    }
+    fn get_stream(stream_data: Arc<Mutex<StreamData>>, device_selector: &DeviceSelector, internals: StreamerInternalStateRef) -> Stream {
+        let (device, config) = device_selector.get_device_and_config();
+        let device = device.unwrap();
+        let config = config.unwrap();
 
-        assert_eq!(channels, 2);
-
-        let data = Arc::new(Mutex::new(StreamData::new()));
-
+        assert_eq!(config.channels(), 2);
         println!("device name: {}", device.name().unwrap_or("<>".to_string()));
 
-        let stream = {
-            let stream_data = data.clone();
-            device.build_input_stream(
+        let stream = device
+            .build_input_stream(
                 &config.into(),
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     stream_data.lock().unwrap().append(data);
                 },
-                Self::err_fn,
+                {let internals = internals.clone(); move |err| Self::err_fn(err, internals.clone())},
                 None,
-            )?
+            )
+            .unwrap();
+
+        stream.play().unwrap();
+        stream
+    }
+
+    pub fn did_lose_device(&self) -> bool {
+        self.internals.lock().unwrap().lost_device
+    }
+    pub fn begin(device_selector: &DeviceSelector) -> Result<Self, Box<dyn std::error::Error>> {
+        let data = Arc::new(Mutex::new(StreamData::new()));
+        let internals = Arc::new(Mutex::new(StreamerInternalState {
+            lost_device: false
+        }));
+        let stream = Self::get_stream(data.clone(), device_selector, internals.clone());
+
+        Ok(Self {
+            stream,
+            data,
+            internals,
+        })
+    }
+}
+
+pub struct DeviceSelector {
+    use_input: bool,
+    host: Host,
+    current_device: Option<Device>,
+    last_poll: SystemTime,
+}
+
+impl DeviceSelector {
+    pub fn new(use_input: bool) -> Self {
+        let mut this = Self {
+            use_input,
+            host: cpal::default_host(),
+            current_device: None,
+            last_poll: SystemTime::now(),
         };
+        this.current_device = this.get_device();
+        this
+    }
+    pub fn poll_device_has_changed(&mut self, skip_waiting: bool) -> bool {
+        if skip_waiting {
+            self.last_poll = SystemTime::now();
+            // continue
+        } else {
+            if let Ok(elapsed) = self.last_poll.elapsed() {
+                if elapsed.as_secs() >= 1 {
+                    self.last_poll = SystemTime::now();
+                    // continue
+                } else {
+                    return false;
+                }
+            } else {
+                eprintln!("Failed to get elapsed time since last audio device poll.");
+                self.last_poll = SystemTime::now(); // reset to give it another chance to work.
+                return false;
+            }
+        }
 
-        stream.play()?;
+        let prev_device = self.current_device.as_ref();
+        let device = self.get_device();
 
-        Ok(Self { stream, data })
+        // If there were a better way I would use it.
+        let updated = prev_device.map(|it| it.name().ok()).flatten()
+            != device.as_ref().map(|it| it.name().ok()).flatten();
+
+        if updated {
+            self.current_device = device;
+        }
+
+        updated
+    }
+    fn get_device(&self) -> Option<Device> {
+        if self.use_input {
+            self.host.default_input_device()
+        } else {
+            self.host.default_output_device()
+        }
+    }
+    fn get_config_from_device(&self, device: &Device) -> Option<SupportedStreamConfig> {
+        (if self.use_input {
+            device.default_input_config()
+        } else {
+            device.default_output_config()
+        }).ok()
+    }
+
+    pub fn get_device_and_config(&self) -> (Option<Device>, Option<SupportedStreamConfig>) {
+        let device = self.get_device();
+        let config = device.as_ref().map(|d|self.get_config_from_device(d)).flatten();
+        ( device, config )
     }
 }

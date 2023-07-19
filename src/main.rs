@@ -1,4 +1,4 @@
-use audio::Streamer;
+use audio::{Streamer, DeviceSelector};
 use glfw::Context;
 use util::GenericResult;
 
@@ -7,7 +7,8 @@ mod render;
 mod util;
 
 fn main() -> GenericResult<()> {
-    let audio = Streamer::begin()?;
+    let mut audio_device_selector = DeviceSelector::new(false);
+    let mut audio = Streamer::begin(&audio_device_selector)?;
 
     // Initialize GLFW
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
@@ -49,16 +50,23 @@ fn main() -> GenericResult<()> {
 
     // Render loop
     while !window.should_close() {
+        // Poll stuff.
         glfw.poll_events();
+        if audio_device_selector.poll_device_has_changed(audio.did_lose_device()) {
+            audio.update_stream(&audio_device_selector);
+        }
 
+        // Pass audio data to renderer/visualizer
         while let Some(k) = audio.data.lock().unwrap().take() {
             h.set_wave(&k);
         }
 
+        // Obvious
         unsafe {
             h.draw();
         }
 
+        // Handle events
         while let Ok((_,ev)) = events.try_recv() {
             match ev {
                 glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => {
@@ -93,6 +101,8 @@ fn main() -> GenericResult<()> {
                 _ => {},
             }
         }
+
+        // Finish frame
         window.swap_buffers();
     }
 
