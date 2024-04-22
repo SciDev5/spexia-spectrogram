@@ -1,4 +1,4 @@
-use audio::{Streamer, DeviceSelector};
+use audio::{DeviceSelector, Streamer};
 use glfw::Context;
 use util::GenericResult;
 
@@ -45,7 +45,7 @@ fn main() -> GenericResult<()> {
 
     window.set_key_polling(true);
     window.set_size_polling(true);
-    
+
     let mut fullscreen = false;
 
     // Render loop
@@ -67,7 +67,7 @@ fn main() -> GenericResult<()> {
         }
 
         // Handle events
-        while let Ok((_,ev)) = events.try_recv() {
+        while let Ok((_, ev)) = events.try_recv() {
             match ev {
                 glfw::WindowEvent::Key(key, _scancode, action, _modifiers) => {
                     if let glfw::Action::Press = action {
@@ -94,11 +94,13 @@ fn main() -> GenericResult<()> {
                     }
                 }
                 glfw::WindowEvent::Size(width, height) => {
-                    unsafe { gl::Viewport(0, 0, width, height); }
+                    unsafe {
+                        gl::Viewport(0, 0, width, height);
+                    }
                     h.window_height = height;
                     h.aspect = height as f32 / width as f32;
                 }
-                _ => {},
+                _ => {}
             }
         }
 

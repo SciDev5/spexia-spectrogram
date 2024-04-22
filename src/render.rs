@@ -318,17 +318,26 @@ impl H {
         }
         let mut ds = [glrs::GLTexPixel::default(); FFT_SIZE / 2];
         for i in 0..FFT_SIZE / 2 {
+            // for j in 0..2 {
+            //     let cur = wave.0[j][i].abs() as f64;
+            //     self.spec_accum[i][j] = cur + 0.5 * (self.spec_accum[i][j] - cur);
+            // }
+            // let c0 = self.spec_accum[i][0].log10() as f32 / 100.0 + 0.5;
+            // let c1 = self.spec_accum[i][1].log10() as f32 / 100.0 + 0.5;
+            let mut c = [0.0; 2];
             for j in 0..2 {
                 let cur = wave.0[j][i].abs() as f64;
                 self.spec_accum[i][j] = cur + 0.5 * (self.spec_accum[i][j] - cur);
+                c[j] = self.spec_accum[i][j].log10() as f32 / 100.0 + 0.5;
+                // if i == 200 && j == 0 {
+                //     dbg!(c[j]);
+                // }
             }
-            let c0 = self.spec_accum[i][0].log10() as f32 / 100.0 + 0.5;
-            let c1 = self.spec_accum[i][1].log10() as f32 / 100.0 + 0.5;
             ds[i] = glrs::GLTexPixel {
-                r: ((c0 * 256.0) % 256.0) as u8,
-                g: ((c0 * 65536.0) % 256.0) as u8,
-                b: ((c1 * 256.0) % 256.0) as u8,
-                a: ((c1 * 65536.0) % 256.0) as u8,
+                r: ((c[0] * 256.0) % 256.0) as u8,
+                g: ((c[0] * 65536.0) % 256.0) as u8,
+                b: ((c[1] * 256.0) % 256.0) as u8,
+                a: ((c[1] * 65536.0) % 256.0) as u8,
             };
         }
         if self.n == SPEC_WIDTH - 1 {
