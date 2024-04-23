@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex}, time::SystemTime,
+    sync::{Arc, Mutex},
+    time::SystemTime,
 };
 
 use cpal::{
@@ -80,7 +81,11 @@ impl Streamer {
     pub fn update_stream(&mut self, device_selector: &DeviceSelector) {
         self.stream = Self::get_stream(self.data.clone(), device_selector, self.internals.clone());
     }
-    fn get_stream(stream_data: Arc<Mutex<StreamData>>, device_selector: &DeviceSelector, internals: StreamerInternalStateRef) -> Stream {
+    fn get_stream(
+        stream_data: Arc<Mutex<StreamData>>,
+        device_selector: &DeviceSelector,
+        internals: StreamerInternalStateRef,
+    ) -> Stream {
         let (device, config) = device_selector.get_device_and_config();
         let device = device.unwrap();
         let config = config.unwrap();
@@ -94,7 +99,10 @@ impl Streamer {
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     stream_data.lock().unwrap().append(data);
                 },
-                {let internals = internals.clone(); move |err| Self::err_fn(err, internals.clone())},
+                {
+                    let internals = internals.clone();
+                    move |err| Self::err_fn(err, internals.clone())
+                },
                 None,
             )
             .unwrap();
@@ -108,9 +116,7 @@ impl Streamer {
     }
     pub fn begin(device_selector: &DeviceSelector) -> Result<Self, Box<dyn std::error::Error>> {
         let data = Arc::new(Mutex::new(StreamData::new()));
-        let internals = Arc::new(Mutex::new(StreamerInternalState {
-            lost_device: false
-        }));
+        let internals = Arc::new(Mutex::new(StreamerInternalState { lost_device: false }));
         let stream = Self::get_stream(data.clone(), device_selector, internals.clone());
 
         Ok(Self {
@@ -183,12 +189,16 @@ impl DeviceSelector {
             device.default_input_config()
         } else {
             device.default_output_config()
-        }).ok()
+        })
+        .ok()
     }
 
     pub fn get_device_and_config(&self) -> (Option<Device>, Option<SupportedStreamConfig>) {
         let device = self.get_device();
-        let config = device.as_ref().map(|d|self.get_config_from_device(d)).flatten();
-        ( device, config )
+        let config = device
+            .as_ref()
+            .map(|d| self.get_config_from_device(d))
+            .flatten();
+        (device, config)
     }
 }
