@@ -16,6 +16,7 @@ pub const NUM_SPECTROGRAM_FRAMES: usize = 512;
 
 pub struct RenderApp {
     render_spectrogram: RenderSpectrogram,
+    render_reassigned_spectrogram: RenderReassignedSpectrogram,
     render_waveline: RenderWaveline,
     render_floatingindicator: RenderFloatingIndicator,
 
@@ -28,6 +29,7 @@ impl RenderApp {
     pub fn new() -> Self {
         Self {
             render_spectrogram: RenderSpectrogram::new(),
+            render_reassigned_spectrogram: RenderReassignedSpectrogram::new(),
             render_waveline: RenderWaveline::new(),
             render_floatingindicator: RenderFloatingIndicator::new(),
 
@@ -38,9 +40,18 @@ impl RenderApp {
     }
 
     pub fn draw(&self, winfo: &glfwrs::Winfo) {
-        glrs::Rgba::TRANSPARENT.gl_clear_color();
+        // glrs::Rgba::TRANSPARENT.gl_clear_color();
+        glrs::Rgba {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        }
+        .gl_clear_color();
 
-        self.render_spectrogram.render(self.frame_n, winfo);
+        self.render_reassigned_spectrogram
+            .render(self.frame_n, winfo);
+        // self.render_spectrogram.render(self.frame_n, winfo);
         self.render_waveline.render();
 
         if winfo.floating {
@@ -48,7 +59,14 @@ impl RenderApp {
         }
     }
 
-    pub fn set_wave(&mut self, wave: &([[Complex32; FFT_SIZE]; 2], [[f32; FFT_SIZE]; 2])) {
+    pub fn set_wave(
+        &mut self,
+        wave: &(
+            [[Complex32; FFT_SIZE]; 2],
+            [[f32; FFT_SIZE]; 2],
+            [[f32; HALF_FFT_SIZE]; 2],
+        ),
+    ) {
         self.render_waveline.set_wave(wave, &self.wave_last);
         self.wave_last = wave.1;
 
@@ -59,7 +77,9 @@ impl RenderApp {
             }
         }
 
-        self.render_spectrogram.set_wave(self.frame_n, wave);
+        self.render_reassigned_spectrogram
+            .set_wave(self.frame_n, wave);
+        // self.render_spectrogram.set_wave(self.frame_n, wave);
     }
 }
 
@@ -96,7 +116,11 @@ impl RenderSpectrogram {
     pub fn set_wave(
         &mut self,
         frame_n: usize,
-        wave: &([[Complex32; FFT_SIZE]; 2], [[f32; FFT_SIZE]; 2]),
+        wave: &(
+            [[Complex32; FFT_SIZE]; 2],
+            [[f32; FFT_SIZE]; 2],
+            [[f32; HALF_FFT_SIZE]; 2],
+        ),
     ) {
         let mut ds = [glrs::Rgba::default(); FFT_SIZE / 2];
         for i in 0..FFT_SIZE / 2 {
@@ -139,6 +163,61 @@ impl RenderSpectrogram {
     }
 }
 
+const K: usize = NUM_SPECTROGRAM_FRAMES * HALF_FFT_SIZE * 2;
+glrs_renderable! {
+    pub RenderReassignedSpectrogram(glrs::BoxedF32VO<K, 3>) {
+        shaders(vert: "./shader/reassigned.vsh", frag: "./shader/reassigned.fsh");
+        vo(glrs::BoxedF32VO::new());
+        fn new() {
+            Self { vo, shaders }
+        };
+    }
+}
+impl RenderReassignedSpectrogram {
+    pub fn render(&self, frame_n: usize, winfo: &glfwrs::Winfo) {
+        self.bind();
+        glrs::uniform(1, V1F(frame_n as f32 / NUM_SPECTROGRAM_FRAMES as f32));
+        glrs::TransparencyMode::Add.apply();
+        glrs::DrawArrays::Points {
+            range: 0..K as i32,
+            point_size: 1.0,
+        }
+        .exec();
+        glrs::TransparencyMode::Normal.apply();
+    }
+
+    pub fn set_wave(
+        &mut self,
+        frame_n: usize,
+        wave: &(
+            [[Complex32; FFT_SIZE]; 2],
+            [[f32; FFT_SIZE]; 2],
+            [[f32; HALF_FFT_SIZE]; 2],
+        ),
+    ) {
+        for j in 0..2 {
+            let i0 = HALF_FFT_SIZE * (2 * frame_n + j);
+            let il = HALF_FFT_SIZE
+                * (2 * (frame_n + NUM_SPECTROGRAM_FRAMES - 1) % NUM_SPECTROGRAM_FRAMES + j);
+            let i1 = HALF_FFT_SIZE * (2 * ((frame_n + 1) % NUM_SPECTROGRAM_FRAMES) + j);
+            for i in 0..HALF_FFT_SIZE {
+                let x = frame_n as f32 / NUM_SPECTROGRAM_FRAMES as f32;
+                // let y = i as f32 / (HALF_FFT_SIZE) as f32;
+                let y = wave.2[0][i];
+                // let y = wave.2[0][i] * 0.1 + 0.9 * (i as f32 / (HALF_FFT_SIZE) as f32);
+                // self.vo.data[i + i1][2] = 0.0;
+                self.vo.data[i + i0] = [
+                    x,
+                    y,
+                    // self.vo.data[i + il][1] * 0.25 + y * 0.75,
+                    wave.0[0][i].abs(),
+                ];
+            }
+        }
+        self.vo.update();
+    }
+}
+
 const WAVE_VO_SIZE: usize = 5 * FFT_SIZE;
 glrs_renderable! {
     pub RenderWaveline(glrs::F32VO<WAVE_VO_SIZE, 2>) {
@@ -169,7 +248,11 @@ impl RenderWaveline {
     }
     pub fn set_wave(
         &mut self,
-        wave: &([[Complex32; FFT_SIZE]; 2], [[f32; FFT_SIZE]; 2]),
+        wave: &(
+            [[Complex32; FFT_SIZE]; 2],
+            [[f32; FFT_SIZE]; 2],
+            [[f32; HALF_FFT_SIZE]; 2],
+        ),
         wave_last: &[[f32; FFT_SIZE]; 2],
     ) {
         for i in 0..FFT_SIZE {

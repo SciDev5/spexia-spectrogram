@@ -369,7 +369,7 @@ impl<const L: usize, const S: usize> F32VO<L, S> {
             gl::BufferData(
                 gl::ARRAY_BUFFER,
                 (L * S * std::mem::size_of::<gl::types::GLfloat>()) as gl::types::GLsizeiptr,
-                &data[0] as *const f32 as *const c_void,
+                &self_.data[0] as *const f32 as *const c_void,
                 gl::STATIC_DRAW,
             );
         }
@@ -410,6 +410,82 @@ impl<const L: usize, const S: usize> F32VO<L, S> {
     }
 }
 impl<const L: usize, const S: usize> Drop for F32VO<L, S> {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &self.vbo);
+            gl::DeleteVertexArrays(1, &self.vao);
+        }
+    }
+}
+
+/// A vertex object containing `N` `S` dimensional [`f32`] vectors (allocated on the heap on the cpu side)
+pub struct BoxedF32VO<const N: usize, const S: usize> {
+    vbo: gl::types::GLuint,
+    vao: gl::types::GLuint,
+    pub data: Box<[[f32; S]; N]>,
+}
+impl<const L: usize, const S: usize> BoxedF32VO<L, S> {
+    pub fn new() -> Self {
+        let mut self_ = Self {
+            vbo: 0,
+            vao: 0,
+            data: unsafe {
+                // Memory safety: overwritten with all float zeros directly after.
+                let mut b: Box<[[f32; S]; L]> = Box::from_raw(std::alloc::alloc(
+                    std::alloc::Layout::new::<[[f32; S]; L]>(),
+                ) as *mut _);
+                b.fill([0.0; S]);
+                b
+            },
+        };
+        // Create and bind the vertex buffer
+        unsafe {
+            gl::GenBuffers(1, &mut self_.vbo);
+            gl::BindBuffer(gl::ARRAY_BUFFER, self_.vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (L * S * std::mem::size_of::<gl::types::GLfloat>()) as gl::types::GLsizeiptr,
+                self_.data.as_ptr() as *const c_void,
+                gl::STATIC_DRAW,
+            );
+        }
+
+        // Create and bind the vertex array object
+        unsafe {
+            gl::GenVertexArrays(1, &mut self_.vao);
+            gl::BindVertexArray(self_.vao);
+            gl::VertexAttribPointer(
+                0,
+                S as gl::types::GLint,
+                gl::FLOAT,
+                gl::FALSE,
+                (S * std::mem::size_of::<gl::types::GLfloat>()) as gl::types::GLsizei,
+                std::ptr::null(),
+            );
+            gl::EnableVertexAttribArray(0);
+        }
+
+        self_
+    }
+    pub fn update(&self) {
+        unsafe {
+            gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+            gl::BufferData(
+                gl::ARRAY_BUFFER,
+                (L * S * std::mem::size_of::<gl::types::GLfloat>()) as gl::types::GLsizeiptr,
+                &self.data[0] as *const f32 as *const c_void,
+                gl::STATIC_DRAW,
+            );
+        }
+    }
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindVertexArray(self.vao);
+            gl::EnableVertexAttribArray(0);
+        }
+    }
+}
+impl<const L: usize, const S: usize> Drop for BoxedF32VO<L, S> {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &self.vbo);
@@ -488,12 +564,16 @@ pub enum DrawArrays<
         line_width: gl::types::GLfloat,
         point_size: gl::types::GLfloat,
     },
+    Points {
+        range: Range<T>,
+        point_size: gl::types::GLfloat,
+    },
 }
 impl<T: Into<gl::types::GLint> + std::ops::Sub<Output = V> + Copy, V: Into<gl::types::GLsizei>>
     DrawArrays<T, V>
 {
     pub fn exec(self) {
-        let (range, mode, scale) = match self {
+        let (range, mode, stride) = match self {
             Self::Triangles { range } => (range, gl::TRIANGLES, 3),
             Self::LineStrip {
                 range,
@@ -506,12 +586,18 @@ impl<T: Into<gl::types::GLint> + std::ops::Sub<Output = V> + Copy, V: Into<gl::t
                 }
                 (range, gl::LINE_STRIP, 1)
             }
+            DrawArrays::Points { range, point_size } => {
+                unsafe {
+                    gl::PointSize(point_size);
+                }
+                (range, gl::POINTS, 1)
+            }
         };
         unsafe {
             gl::DrawArrays(
                 mode,
                 range.start.into(),
-                (range.end - range.start).into() * scale,
+                (range.end - range.start).into() * stride,
             )
         }
     }
@@ -520,6 +606,7 @@ impl<T: Into<gl::types::GLint> + std::ops::Sub<Output = V> + Copy, V: Into<gl::t
 pub enum TransparencyMode {
     Normal,
     Replace,
+    Add,
 }
 impl TransparencyMode {
     pub fn apply(&self) {
@@ -532,6 +619,10 @@ impl TransparencyMode {
                 Self::Replace => {
                     gl::BlendEquation(gl::FUNC_ADD);
                     gl::BlendFunc(gl::SRC_ALPHA, gl::ZERO);
+                }
+                Self::Add => {
+                    gl::BlendEquation(gl::FUNC_ADD);
+                    gl::BlendFunc(gl::ONE, gl::ONE);
                 }
             }
         }

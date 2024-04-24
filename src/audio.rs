@@ -10,11 +10,16 @@ use cpal::{
 };
 use rustfft::{num_complex::Complex32, num_traits::Zero, FftPlanner};
 
-pub const FFT_SIZE: usize = 4096;
-pub const FFT_STRIDE: usize = 1024;
+// pub const FFT_SIZE: usize = 4096;
+pub const FFT_SIZE: usize = 2048;
+pub const FFT_STRIDE: usize = 512;
 pub const HALF_FFT_SIZE: usize = FFT_SIZE / 2;
 
-pub type AudioDataChunk = Box<([[Complex32; FFT_SIZE]; 2], [[f32; FFT_SIZE]; 2])>;
+pub type AudioDataChunk = Box<(
+    [[Complex32; FFT_SIZE]; 2],
+    [[f32; FFT_SIZE]; 2],
+    [[f32; HALF_FFT_SIZE]; 2],
+)>;
 
 pub struct StreamData {
     data: [Vec<f32>; 2],
@@ -28,25 +33,47 @@ impl StreamData {
         }
     }
     fn append(&mut self, data: &[f32]) {
+        let window_fn: [f32; FFT_SIZE] = std::array::from_fn(|i| {
+            ((i as f32 / HALF_FFT_SIZE as f32 - 1.0) * 3.14159).cos() + 1.0
+        });
         for i in 0..data.len() / 2 {
             for j in 0..2 {
                 self.data[j].push(data[i * 2 + j]);
             }
         }
-        if self.data[0].len() >= FFT_SIZE {
+        if self.data[0].len() >= FFT_SIZE + 2 {
             let mut planner = FftPlanner::new();
             let fft = planner.plan_fft_forward(FFT_SIZE);
-            let mut fft_data = Box::new(([[Complex32::zero(); FFT_SIZE]; 2], [[0.0; FFT_SIZE]; 2]));
+            let mut fft_data = Box::new((
+                [[Complex32::zero(); FFT_SIZE]; 2],
+                [[0.0; FFT_SIZE]; 2],
+                [[0.0; HALF_FFT_SIZE]; 2],
+            ));
 
             for j in 0..2 {
                 let mut data_f32 = [0.0; FFT_SIZE];
+                let mut data_f32_shifted = [0.0; FFT_SIZE];
                 data_f32[..].clone_from_slice(&self.data[j][..FFT_SIZE]);
-                let mut data: Vec<_> = (&data_f32).into_iter().map(Complex32::from).collect();
+                data_f32_shifted[..].clone_from_slice(&self.data[j][1..][..FFT_SIZE]);
+                let mut data: Vec<_> = (&data_f32)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| Complex32::new(*v * window_fn[i], 0.0))
+                    .collect();
+                let mut data_shifted: Vec<_> = (&data_f32_shifted)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| Complex32::new(*v * window_fn[i], 0.0))
+                    .collect();
 
                 fft.process(&mut data[..]);
+                fft.process(&mut data_shifted[..]);
 
                 for i in 0..FFT_SIZE {
                     fft_data.0[j][i] = data[i];
+                }
+                for i in 0..HALF_FFT_SIZE {
+                    fft_data.2[j][i] = (data[i].conj() * data_shifted[i]).arg().abs();
                 }
                 fft_data.1[j] = data_f32;
 
