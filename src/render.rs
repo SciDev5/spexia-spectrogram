@@ -12,7 +12,7 @@ mod glrs;
 
 pub use glfwrs::{Window, Winfo};
 
-pub const NUM_SPECTROGRAM_FRAMES: usize = 512;
+pub const NUM_SPECTROGRAM_FRAMES: usize = 1024;
 
 pub struct RenderApp {
     render_spectrogram: RenderSpectrogram,
@@ -176,13 +176,20 @@ glrs_renderable! {
 impl RenderReassignedSpectrogram {
     pub fn render(&self, frame_n: usize, winfo: &glfwrs::Winfo) {
         self.bind();
-        glrs::uniform(1, V1F(frame_n as f32 / NUM_SPECTROGRAM_FRAMES as f32));
+        glrs::uniform(
+            1,
+            V1F(((frame_n + 1) as f32 / NUM_SPECTROGRAM_FRAMES as f32) % 1.0),
+        );
         glrs::TransparencyMode::Add.apply();
-        glrs::DrawArrays::Points {
-            range: 0..K as i32,
-            point_size: 1.0,
+        for j in 0..2 {
+            glrs::uniform(2, V1F(j as f32));
+            let off = (NUM_SPECTROGRAM_FRAMES * HALF_FFT_SIZE) as i32 * j;
+            glrs::DrawArrays::Points {
+                range: off..off + (HALF_FFT_SIZE * NUM_SPECTROGRAM_FRAMES) as i32,
+                point_size: 1.0,
+            }
+            .exec();
         }
-        .exec();
         glrs::TransparencyMode::Normal.apply();
     }
 
@@ -196,10 +203,7 @@ impl RenderReassignedSpectrogram {
         ),
     ) {
         for j in 0..2 {
-            let i0 = HALF_FFT_SIZE * (2 * frame_n + j);
-            let il = HALF_FFT_SIZE
-                * (2 * (frame_n + NUM_SPECTROGRAM_FRAMES - 1) % NUM_SPECTROGRAM_FRAMES + j);
-            let i1 = HALF_FFT_SIZE * (2 * ((frame_n + 1) % NUM_SPECTROGRAM_FRAMES) + j);
+            let i0 = HALF_FFT_SIZE * (frame_n + j * NUM_SPECTROGRAM_FRAMES);
             for i in 0..HALF_FFT_SIZE {
                 let x = frame_n as f32 / NUM_SPECTROGRAM_FRAMES as f32;
                 // let y = i as f32 / (HALF_FFT_SIZE) as f32;

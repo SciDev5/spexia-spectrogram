@@ -8,7 +8,7 @@
             "name": "Launch",
             "request": "launch",
             "type": "node-terminal",
-            "command": "cargo run ; pause ; exit 0",
+            "command": "cargo run --release ; pause ; exit 0",
         }
     ]
 }

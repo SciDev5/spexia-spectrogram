@@ -10,7 +10,6 @@ use cpal::{
 };
 use rustfft::{num_complex::Complex32, num_traits::Zero, FftPlanner};
 
-// pub const FFT_SIZE: usize = 4096;
 pub const FFT_SIZE: usize = 2048;
 pub const FFT_STRIDE: usize = 512;
 pub const HALF_FFT_SIZE: usize = FFT_SIZE / 2;

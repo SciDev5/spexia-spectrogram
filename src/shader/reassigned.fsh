@@ -2,6 +2,7 @@
 out vec4 FragColor;
 
 layout(location = 0) in float magnitude;
+layout(location = 2) uniform float channel;
 
 vec3 hsv2rgb(vec3 c) {
     vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -18,7 +19,8 @@ vec3 heatmap(float x) {
 
 void main() {
 
-    float x = log(magnitude * 0.9 + 0.1) / 4.0;
+    // float x = clamp(log(magnitude * 0.9 + 0.1) / 4.0, 0.0, 1.0);
+    float x = clamp(log(magnitude * 0.9 + 0.05) / 5.0, 0.0, 1.0);
 
     vec3 col = heatmap(x);
 

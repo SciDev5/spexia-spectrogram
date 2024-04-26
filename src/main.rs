@@ -14,7 +14,7 @@ fn main() -> GenericResult<()> {
     let mut glfw = glfw::init(glfw::fail_on_errors).unwrap();
     let mut window = Window::new(
         &mut glfw,
-        Vec2I(512, 1024),
+        Vec2I(1024, 1024),
         false,
         true,
         "spexia spectrogram :3",
