@@ -10,12 +10,16 @@ vec3 hsv2rgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 vec3 heatmap(float x) {
-    float k = clamp(x, 0.0, 1.0);// max(0.0,min(1.0,fac));
-    float h = mod((0.6 - 0.75 * pow(k, 4.0) + 1.0), 1.0);
-    float s = 1.0 - pow(k, 7.0);
-    float v = pow(k, 0.7);
-    return hsv2rgb(vec3(h, s, v));
+    float k = clamp(x, 0.0, 1.0);
+    return 0.9 * vec3(k * k * k * k * k, k * k * k, 2 * k * k) + 0.15 * vec3(1.0, 0.3, 0.2) * min(k * 3.0, 1.0);
 }
+// vec3 heatmap(float x) {
+//     float k = clamp(x, 0.0, 1.0);// max(0.0,min(1.0,fac));
+//     float h = mod((0.6 - 0.75 * pow(k, 4.0) + 1.0), 1.0);
+//     float s = 1.0 - pow(k, 7.0);
+//     float v = pow(k, 0.7);
+//     return hsv2rgb(vec3(h, s, v));
+// }
 
 void main() {
 
@@ -24,7 +28,7 @@ void main() {
 
     vec3 col = heatmap(x);
 
-    FragColor = vec4(col, magnitude * 0.4);// vec4(magnitude * 0.01, magnitude * 0.1, magnitude * 1.0, 1.0);
+    FragColor = vec4(col, magnitude * x * 0.4);// vec4(magnitude * 0.01, magnitude * 0.1, magnitude * 1.0, 1.0);
 }
 
 // // vec3 heatmap(float x) {
