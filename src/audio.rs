@@ -21,13 +21,13 @@ pub type AudioDataChunk = Box<(
 )>;
 
 pub struct StreamData {
-    data: [Vec<f32>; 2],
+    data: VecDeque<[f32; 2]>,
     fft_data: VecDeque<AudioDataChunk>,
 }
 impl StreamData {
     fn new() -> Self {
         Self {
-            data: [vec![], vec![]],
+            data: VecDeque::new(),
             fft_data: VecDeque::new(),
         }
     }
@@ -36,12 +36,10 @@ impl StreamData {
             ((i as f32 / HALF_FFT_SIZE as f32 - 1.0) * 3.14159).cos() + 1.0
         });
         for i in 0..data.len() / 2 {
-            for j in 0..2 {
-                self.data[j].push(data[i * 2 + j]);
-            }
+            self.data.push_back([data[i * 2 + 0], data[i * 2 + 1]]);
         }
-        if self.data[0].len() >= FFT_SIZE + 2 {
-            let mut planner = FftPlanner::new();
+        while self.data.len() >= FFT_SIZE + 2 {
+            let mut planner: FftPlanner<f32> = FftPlanner::new();
             let fft = planner.plan_fft_forward(FFT_SIZE);
             let mut fft_data = Box::new((
                 [[Complex32::zero(); FFT_SIZE]; 2],
@@ -52,8 +50,20 @@ impl StreamData {
             for j in 0..2 {
                 let mut data_f32 = [0.0; FFT_SIZE];
                 let mut data_f32_shifted = [0.0; FFT_SIZE];
-                data_f32[..].clone_from_slice(&self.data[j][..FFT_SIZE]);
-                data_f32_shifted[..].clone_from_slice(&self.data[j][1..][..FFT_SIZE]);
+                for (i, sample) in self
+                    .data
+                    .iter()
+                    .skip(1)
+                    .take(FFT_SIZE - 1)
+                    .copied()
+                    .enumerate()
+                {
+                    data_f32[i + 1] = sample[j];
+                    data_f32_shifted[i] = sample[j];
+                }
+                data_f32[0] = self.data[0][j];
+                data_f32_shifted[FFT_SIZE - 1] = self.data[FFT_SIZE][j];
+
                 let mut data: Vec<_> = (&data_f32)
                     .into_iter()
                     .enumerate()
@@ -75,8 +85,9 @@ impl StreamData {
                     fft_data.2[j][i] = (data[i].conj() * data_shifted[i]).arg().abs();
                 }
                 fft_data.1[j] = data_f32;
-
-                self.data[j].drain(..FFT_STRIDE);
+            }
+            for _ in 0..FFT_STRIDE {
+                self.data.pop_front();
             }
             self.fft_data.push_back(fft_data);
         }

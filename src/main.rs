@@ -24,12 +24,15 @@ fn main() -> GenericResult<()> {
     );
     let mut render_app = render::RenderApp::new();
 
+    let mut i = 0;
+
     //// program loop ////
     while !window.should_close() {
         //// audio system updates ////
         if audio_device_selector.poll_device_has_changed(audio.did_lose_device()) {
             audio.update_stream(&audio_device_selector);
         }
+        // let mut updated = false;
         while let Some(k) = audio.data.lock().unwrap().take() {
             render_app.set_wave(&k);
         }
@@ -54,6 +57,11 @@ fn main() -> GenericResult<()> {
         });
 
         //// render ////
+        // i += 1;
+        // i %= 100;
+        // if i != 0 {
+        //     continue;
+        // }
         window.render(|winfo| render_app.draw(&winfo));
     }
 
