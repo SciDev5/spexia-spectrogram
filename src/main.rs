@@ -33,8 +33,11 @@ fn main() -> GenericResult<()> {
             audio.update_stream(&audio_device_selector);
         }
         // let mut updated = false;
-        while let Some(k) = audio.data.lock().unwrap().take() {
-            render_app.set_wave(&k);
+        {
+            let mut audio_data = audio.data.lock().unwrap();
+            while let Some(k) = audio_data.take() {
+                render_app.set_wave(&k, audio_data.sample_rate);
+            }
         }
 
         //// window polling and events ////

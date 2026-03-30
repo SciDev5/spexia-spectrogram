@@ -11,7 +11,7 @@ use cpal::{
 use rustfft::{num_complex::Complex32, num_traits::Zero, FftPlanner};
 
 pub const FFT_SIZE: usize = 2048;
-pub const FFT_STRIDE: usize = 512;
+pub const FFT_STRIDE: usize = 256;
 pub const HALF_FFT_SIZE: usize = FFT_SIZE / 2;
 
 pub type AudioDataChunk = Box<(
@@ -23,12 +23,14 @@ pub type AudioDataChunk = Box<(
 pub struct StreamData {
     data: VecDeque<[f32; 2]>,
     fft_data: VecDeque<AudioDataChunk>,
+    pub sample_rate: f32,
 }
 impl StreamData {
-    fn new() -> Self {
+    fn new(sample_rate: f32) -> Self {
         Self {
             data: VecDeque::new(),
             fft_data: VecDeque::new(),
+            sample_rate,
         }
     }
     fn append(&mut self, data: &[f32]) {
@@ -82,7 +84,9 @@ impl StreamData {
                     fft_data.0[j][i] = data[i];
                 }
                 for i in 0..HALF_FFT_SIZE {
-                    fft_data.2[j][i] = (data[i].conj() * data_shifted[i]).arg().abs();
+                    fft_data.2[j][i] = (data[i].conj() * data_shifted[i]).arg().abs()
+                        * self.sample_rate
+                        / std::f32::consts::TAU;
                 }
                 fft_data.1[j] = data_f32;
             }
@@ -129,6 +133,9 @@ impl Streamer {
 
         assert_eq!(config.channels(), 2);
         println!("device name: {}", device.name().unwrap_or("<>".to_string()));
+        {
+            stream_data.lock().unwrap().sample_rate = config.sample_rate().0 as f32;
+        }
 
         let stream = device
             .build_input_stream(
@@ -152,7 +159,7 @@ impl Streamer {
         self.internals.lock().unwrap().lost_device
     }
     pub fn begin(device_selector: &DeviceSelector) -> Result<Self, Box<dyn std::error::Error>> {
-        let data = Arc::new(Mutex::new(StreamData::new()));
+        let data = Arc::new(Mutex::new(StreamData::new(0.0)));
         let internals = Arc::new(Mutex::new(StreamerInternalState { lost_device: false }));
         let stream = Self::get_stream(data.clone(), device_selector, internals.clone());
 

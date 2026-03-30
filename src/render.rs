@@ -1,7 +1,7 @@
 use rustfft::num_complex::{Complex32, ComplexFloat};
 
 use crate::{
-    audio::{FFT_SIZE, HALF_FFT_SIZE},
+    audio::{FFT_SIZE, FFT_STRIDE, HALF_FFT_SIZE},
     glrs_renderable,
 };
 
@@ -66,8 +66,10 @@ impl RenderApp {
             [[f32; FFT_SIZE]; 2],
             [[f32; HALF_FFT_SIZE]; 2],
         ),
+        sample_rate: f32,
     ) {
-        self.render_waveline.set_wave(wave, &self.wave_last);
+        self.render_waveline
+            .set_wave(wave, &self.wave_last, sample_rate);
         self.wave_last = wave.1;
 
         {
@@ -231,10 +233,12 @@ glrs_renderable! {
             Self {
                 shaders, vo,
                 wave_x_off: 0,
+                wave_x_off_f: 0.0,
             }
         };
 
         wave_x_off: i32,
+        wave_x_off_f: f32,
     }
 }
 impl RenderWaveline {
@@ -258,6 +262,7 @@ impl RenderWaveline {
             [[f32; HALF_FFT_SIZE]; 2],
         ),
         wave_last: &[[f32; FFT_SIZE]; 2],
+        sample_rate: f32,
     ) {
         for i in 0..FFT_SIZE {
             let k = i as f32 / FFT_SIZE as f32;
@@ -273,26 +278,18 @@ impl RenderWaveline {
             self.vo.data[i + 4 * FFT_SIZE] = [wave.1[0][i], wave.1[1][i]];
         }
         {
-            let last_off = self.wave_x_off;
+            let (max_i, _) = wave.0[0][..HALF_FFT_SIZE]
+                .iter()
+                .copied()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.abs().total_cmp(&b.abs()))
+                .unwrap();
+            let freq_reassigned = wave.2[0][max_i];
+            let period = (sample_rate / freq_reassigned * 2.0).min((HALF_FFT_SIZE) as f32);
 
-            let mut min_mse = f32::INFINITY;
-            let mut best_off = 0;
-            for off in (-512..512).step_by(2) {
-                let total_off = off - last_off;
-                let bounds = (600.max(-total_off), 900.min(FFT_SIZE as i32 - total_off));
-                let mut mse = 0.0;
-                for i in (bounds.0..bounds.1).step_by(1) {
-                    mse +=
-                        (wave.1[0][(i + total_off) as usize] - wave_last[0][i as usize]).powf(2.0);
-                }
-                mse /= (bounds.1 - bounds.0) as f32;
-
-                if mse < min_mse {
-                    min_mse = mse;
-                    best_off = off;
-                }
-            }
-            self.wave_x_off = best_off;
+            self.wave_x_off_f -= FFT_STRIDE as f32;
+            self.wave_x_off_f -= period * (self.wave_x_off_f / period).round();
+            self.wave_x_off = self.wave_x_off_f as i32;
         }
         self.vo.update();
     }
