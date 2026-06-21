@@ -7,6 +7,7 @@ mod render;
 mod util;
 
 fn main() -> GenericResult<()> {
+    println!("{:?}", cpal::available_hosts());
     let mut audio_device_selector = DeviceSelector::new(false);
     let mut audio = Streamer::begin(&audio_device_selector)?;
 
@@ -24,13 +25,14 @@ fn main() -> GenericResult<()> {
     );
     let mut render_app = render::RenderApp::new();
 
-    let mut i = 0;
-
+    let mut input_changed = false;
     //// program loop ////
     while !window.should_close() {
         //// audio system updates ////
-        if audio_device_selector.poll_device_has_changed(audio.did_lose_device()) {
+        if input_changed || audio_device_selector.poll_device_has_changed(audio.did_lose_device()) {
             audio.update_stream(&audio_device_selector);
+            println!("updated stream");
+            input_changed = false;
         }
         // let mut updated = false;
         {
@@ -48,6 +50,10 @@ fn main() -> GenericResult<()> {
                     match key {
                         glfw::Key::D => {
                             winfo.decorated = !winfo.decorated;
+                        }
+                        glfw::Key::M => {
+                            audio_device_selector.set_uses_input(!audio_device_selector.uses_input());
+                            input_changed = true;
                         }
                         glfw::Key::T => {
                             winfo.floating = !winfo.floating;

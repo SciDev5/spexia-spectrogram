@@ -6,7 +6,7 @@ use std::{
 
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    Device, Host, Stream, StreamError, SupportedStreamConfig,
+    Error, ErrorKind, Device, Host, Stream, SupportedStreamConfig,
 };
 use rustfft::{num_complex::Complex32, num_traits::Zero, FftPlanner};
 
@@ -113,9 +113,9 @@ pub struct Streamer {
     pub data: Arc<Mutex<StreamData>>,
 }
 impl Streamer {
-    fn err_fn(err: StreamError, internals: StreamerInternalStateRef) {
+    fn err_fn(err: Error, internals: StreamerInternalStateRef) {
         eprintln!("an error occurred on the output audio stream: {}", err);
-        if let StreamError::DeviceNotAvailable = err {
+        if let ErrorKind::DeviceNotAvailable = err.kind() {
             internals.lock().unwrap().lost_device = true;
         }
     }
@@ -132,14 +132,14 @@ impl Streamer {
         let config = config.unwrap();
 
         assert_eq!(config.channels(), 2);
-        println!("device name: {}", device.name().unwrap_or("<>".to_string()));
+        println!("device name: {}", device);
         {
-            stream_data.lock().unwrap().sample_rate = config.sample_rate().0 as f32;
+            stream_data.lock().unwrap().sample_rate = config.sample_rate() as f32;
         }
 
         let stream = device
             .build_input_stream(
-                &config.into(),
+                config.into(),
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     stream_data.lock().unwrap().append(data);
                 },
@@ -189,6 +189,12 @@ impl DeviceSelector {
         this.current_device = this.get_device();
         this
     }
+    pub fn uses_input(&self) -> bool {
+        self.use_input
+    }
+    pub fn set_uses_input(&mut self, use_input: bool) {
+        self.use_input = use_input;
+    }
     pub fn poll_device_has_changed(&mut self, skip_waiting: bool) -> bool {
         if skip_waiting {
             self.last_poll = SystemTime::now();
@@ -212,8 +218,8 @@ impl DeviceSelector {
         let device = self.get_device();
 
         // If there were a better way I would use it.
-        let updated = prev_device.map(|it| it.name().ok()).flatten()
-            != device.as_ref().map(|it| it.name().ok()).flatten();
+        let updated = prev_device.map(|it| it.id().ok()).flatten()
+            != device.as_ref().map(|it| it.id().ok()).flatten();
 
         if updated {
             self.current_device = device;

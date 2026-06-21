@@ -82,7 +82,7 @@ impl Window {
         //////////////////////////////////////////
     }
 
-    pub fn handle_events<F: Fn(glfw::WindowEvent, &mut Winfo)>(&mut self, f: F) {
+    pub fn handle_events<F: FnMut(glfw::WindowEvent, &mut Winfo)>(&mut self, mut f: F) {
         let mut winfo = self.winfo;
         while let Some((_, ev)) = self.events.receive() {
             f(ev, &mut winfo);

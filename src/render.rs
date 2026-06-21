@@ -10,7 +10,7 @@ use self::glrs::{GLParam::*, Triangle};
 mod glfwrs;
 mod glrs;
 
-pub use glfwrs::{Window, Winfo};
+pub use glfwrs::{Window};
 
 pub const NUM_SPECTROGRAM_FRAMES: usize = 1024;
 
@@ -176,7 +176,7 @@ glrs_renderable! {
     }
 }
 impl RenderReassignedSpectrogram {
-    pub fn render(&self, frame_n: usize, winfo: &glfwrs::Winfo) {
+    pub fn render(&self, frame_n: usize, _winfo: &glfwrs::Winfo) {
         self.bind();
         glrs::uniform(
             1,
@@ -261,7 +261,7 @@ impl RenderWaveline {
             [[f32; FFT_SIZE]; 2],
             [[f32; HALF_FFT_SIZE]; 2],
         ),
-        wave_last: &[[f32; FFT_SIZE]; 2],
+        _wave_last: &[[f32; FFT_SIZE]; 2],
         sample_rate: f32,
     ) {
         for i in 0..FFT_SIZE {
